@@ -1,0 +1,108 @@
+name: Zbuduj i opublikuj kalendarze
+
+on:
+  schedule:
+    # Co godzinę. GitHub potrafi opóźnić harmonogram o kilkanaście minut —
+    # dla planu zajęć to bez znaczenia.
+    - cron: "23 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write      # keepalive i archiwum linków z poprzedniego semestru
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  SITE_URL: https://adam-m-04.github.io/calendar-pk/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.compare.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Wygeneruj kalendarze
+        run: python generate.py --output public --archive-from "$SITE_URL"
+
+      - name: Sprawdź, czy wynik jest sensowny
+        run: |
+          test -s public/options.json
+          n=$(ls public/c | wc -l)
+          echo "Plików .ics: $n"
+          test "$n" -gt 0
+          f=$(ls public/c/*.ics | head -1)
+          grep -q "^BEGIN:VCALENDAR" "$f"
+          grep -q "^END:VCALENDAR" "$f"
+
+      # Plan zmienia się rzadko, a publikacja to kilka tysięcy plików. Z crona
+      # publikujemy tylko wtedy, gdy zmieniły się dane 4 roku albo kod strony.
+      - name: Porównaj z opublikowaną wersją
+        id: compare
+        run: |
+          new=$(python -c "import json; print(json.load(open('public/meta.json'))['fingerprint'])")
+          old=$(curl -fsSL "${SITE_URL}meta.json" 2>/dev/null \
+            | python -c "import json,sys; print(json.load(sys.stdin)['fingerprint'])" 2>/dev/null || echo brak)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$new" = "$old" ]; then
+            echo "Plan bez zmian — pomijam publikację."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publikuję ($old → $new)."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Przy zmianie semestru generate.py zapisuje skróty starych linków do
+      # legacy/, żeby dalej zwracały kalendarz z notką „wybierz ponownie”.
+      - name: Zapisz archiwum starych linków
+        run: |
+          if [ -n "$(git status --porcelain legacy/)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add legacy/
+            git commit -m "Archiwum linków z poprzedniego semestru"
+            git push
+          fi
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.compare.outputs.deploy == 'true'
+        with:
+          path: public
+
+      # GitHub wyłącza harmonogram w repozytorium, w którym przez 60 dni nic się
+      # nie działo. Plan potrafi stać bez zmian dłużej (wakacje), więc raz na
+      # 45 dni wypychamy pusty commit, żeby licznik się zresetował.
+      - name: Keepalive harmonogramu
+        if: github.event_name == 'schedule'
+        run: |
+          ostatni=$(git log -1 --format=%ct)
+          teraz=$(date +%s)
+          if [ $(( (teraz - ostatni) / 86400 )) -ge 45 ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive: podtrzymanie harmonogramu"
+            git push
+          else
+            echo "Ostatni commit jest świeży — keepalive niepotrzebny."
+          fi
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

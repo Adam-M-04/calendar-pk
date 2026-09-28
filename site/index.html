@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Plan zajęć PK — rok 4</title>
+  <meta name="description" content="Subskrybowany kalendarz z planem zajęć 4 roku Informatyki (studia niestacjonarne) na Politechnice Krakowskiej.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='6' width='26' height='23' rx='4' fill='%232f5bd3'/><rect x='3' y='6' width='26' height='7' rx='3' fill='%231e3f9e'/><rect x='9' y='3' width='3' height='7' rx='1.5' fill='%231e3f9e'/><rect x='20' y='3' width='3' height='7' rx='1.5' fill='%231e3f9e'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Plan zajęć PK</h1>
+      <p class="lead" id="term">Informatyka, studia niestacjonarne · rok 4</p>
+    </header>
+
+    <p class="loading" id="loading">Wczytywanie planu…</p>
+    <p class="error" id="loadError" hidden></p>
+
+    <form id="form" hidden>
+      <section>
+        <h2><span class="step">1</span>Grupy</h2>
+        <div class="field" id="cField">
+          <span class="label">Grupa ćwiczeniowa</span>
+          <div class="segmented" id="cGroups" role="radiogroup" aria-label="Grupa ćwiczeniowa"></div>
+        </div>
+        <div class="field">
+          <span class="label">Grupa laboratoryjna</span>
+          <div class="segmented" id="glGroups" role="radiogroup" aria-label="Grupa laboratoryjna"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2><span class="step">2</span>Przedmioty wybieralne</h2>
+        <p class="hint">Przy każdym przedmiocie zaznacz swoją podgrupę zapisów. „Nie” — nie chodzę na ten przedmiot.</p>
+        <div id="electives"></div>
+      </section>
+
+      <section class="result">
+        <h2><span class="step">3</span>Twój kalendarz</h2>
+        <p class="summary" id="summary"></p>
+        <div class="conflicts" id="conflicts" hidden></div>
+
+        <div class="actions">
+          <a class="button primary" id="subscribe" href="#">Subskrybuj w Apple Calendar</a>
+          <a class="button" id="google" href="#" target="_blank" rel="noopener">Google Calendar</a>
+          <button class="button" type="button" id="copy">Kopiuj link</button>
+        </div>
+        <input class="link" id="link" type="text" readonly aria-label="Link do subskrypcji">
+        <p class="hint" id="copied" aria-live="polite"></p>
+
+        <details class="howto">
+          <summary>Jak dodać ręcznie</summary>
+          <p><strong>Mac:</strong> Kalendarz → Plik → Nowa subskrypcja kalendarza… → wklej link. Ustaw odświeżanie „co godzinę”.</p>
+          <p><strong>iPhone:</strong> Ustawienia → Aplikacje → Kalendarz → Konta → Dodaj konto → Inne → Dodaj subskrybowany kalendarz. Subskrypcja dodana na Macu przez iCloud pojawi się też na telefonie.</p>
+          <p><strong>Google Calendar:</strong> Inne kalendarze → „+” → Z adresu URL. Google odświeża subskrypcje rzadko — nawet raz na dobę.</p>
+        </details>
+
+        <details class="preview" id="previewBox">
+          <summary id="previewTitle">Lista zajęć</summary>
+          <div id="preview"></div>
+        </details>
+      </section>
+    </form>
+
+    <footer>
+      <p>Nieoficjalne narzędzie. Dane pochodzą z <a href="https://ii.pk.edu.pl/~fkruzel/fk-planer-lti/public/plan-ns/">planu online Katedry Informatyki</a> i są sprawdzane co godzinę; kalendarz aktualizuje się sam. <span id="saved"></span></p>
+      <p><a href="https://github.com/Adam-M-04/calendar-pk">Kod na GitHubie</a></p>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
