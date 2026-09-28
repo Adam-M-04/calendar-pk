@@ -87,6 +87,72 @@ przedmioty ponownie” z linkiem do formularza.
 
 ---
 
+## Powiadomienia o zmianach tuż przed zajęciami
+
+Kalendarz aktualizuje się sam, ale nie mówi, że coś się w nim zmieniło.
+Dlatego gdy plan się zmieni, workflow porównuje nową wersję z poprzednią dla
+obserwowanych linków i wysyła maila, jeśli zmiana dotyczy zajęć w ciągu
+najbliższych 4 dni (liczy się stary albo nowy termin). Od środy obejmuje to
+cały najbliższy weekend. O zmianach z większym wyprzedzeniem nie ma maila —
+trafiają tylko do kalendarza.
+
+Mail wymienia przeniesienia, usunięte i nowe zajęcia, zmiany sali,
+prowadzącego i uwag w planie:
+
+```
+Temat: Plan PK: zmiany na sob. 03.10, niedz. 04.10
+
+• Zaawansowane technologie projektowania aplikacji internetowych — projekt (grupa P01)
+  było: sobota 03.10, 08:00–10:30, zdalnie
+  jest: sobota 03.10, 12:00–14:30, zdalnie
+
+• Przedsiębiorczość innowacyjna — wykład (grupy Ć01, Ć02)
+  usunięte z planu: niedziela 04.10, 10:45–13:15, zdalnie
+```
+
+### Konfiguracja (raz)
+
+1. Na koncie Google włącz weryfikację dwuetapową i utwórz **hasło aplikacji**
+   (https://myaccount.google.com/apppasswords, nazwa np. „calendar-pk”).
+2. Dodaj sekrety repozytorium (Settings → Secrets and variables → Actions
+   albo `gh secret set NAZWA`):
+
+   | Sekret | Zawartość |
+   |---|---|
+   | `SMTP_USER` | adres Gmail, z którego idą maile |
+   | `SMTP_PASSWORD` | hasło aplikacji z punktu 1 |
+   | `NOTIFY_WATCH` | obserwowane kalendarze, po jednym w linii: link (albo sam skrót z linku) i opcjonalnie adresy odbiorców. Bez adresu mail idzie na `SMTP_USER`. |
+
+3. **Actions → Zbuduj i opublikuj kalendarze → Run workflow** z zaznaczonym
+   „Wyślij testowy e-mail”. Przyjdzie wiadomość z najbliższymi zajęciami.
+
+### Jak to działa
+
+- Porównanie robi `notify.py` na `options.json` (identyfikatory bloków,
+  terminy, sale, prowadzący, uwagi), więc zmiana samego formatu `.ics` nie
+  wywołuje maili. Gdy planer usunie blok i utworzy nowy zamiast go przesunąć,
+  para z tym samym przedmiotem, formą i grupą jest pokazywana jako zmiana
+  terminu.
+- Poprzednia wersja planu leży w cache Actions (`notify-state-*`), a nie jest
+  pobierana ze strony: CDN Pages przez 10 minut po publikacji oddaje starą
+  wersję (parametr w adresie nie pomaga) i ta sama zmiana przyszłaby dwa razy.
+  Cache wygasa po 7 dniach bez publikacji — wtedy porównanie idzie
+  z opublikowanym `options.json`.
+- Wysyłka to osobny job `notify`, więc jej awaria nie wstrzymuje publikacji
+  kalendarzy. Run jest wtedy czerwony, a „Re-run failed jobs” wysyła te same
+  wiadomości jeszcze raz.
+- Plan sprawdzany jest co godzinę, więc mail przychodzi do godziny po zmianie
+  w planerze. Okno 4 dni to `NOTIFY_DAYS` w `notify.py`.
+- W logach publicznego repo linki występują tylko jako numery („link nr 1”).
+
+Podgląd bez wysyłania:
+
+```bash
+NOTIFY_WATCH=<skrót> python3 notify.py diff --old stary/options.json --new public/options.json --today 2026-10-01 --preview
+```
+
+---
+
 ## Uruchomienie lokalnie
 
 Wymaga tylko Pythona 3.11+, bez zależności.
@@ -109,6 +175,8 @@ kalendarze.
 2. **Settings → Pages → Source: GitHub Actions.**
 3. **Actions → Zbuduj i opublikuj kalendarze → Run workflow** — pierwszy build
    ręcznie.
+4. Opcjonalnie powiadomienia e-mail — sekrety z sekcji
+   [Powiadomienia](#powiadomienia-o-zmianach-tuż-przed-zajęciami).
 
 Dalej leci samo: cron co godzinę pobiera plan, a publikuje tylko wtedy, gdy
 zmieniły się dane 4 roku albo kod (porównuje `fingerprint` z opublikowanego

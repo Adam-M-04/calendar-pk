@@ -475,11 +475,16 @@ def legacy_calendar(old_term: str, model: Model, stamp: str) -> str:
 # --- strona -----------------------------------------------------------------
 
 def options_json(model: Model, rooms: dict) -> dict:
-    """Dane dla formularza: struktura wyboru + lekka lista zajęć do podglądu i kolizji."""
+    """Dane dla formularza: struktura wyboru + lekka lista zajęć do podglądu i kolizji.
+
+    Z tej samej listy notify.py wylicza zmiany między kolejnymi wersjami planu,
+    stąd identyfikator bloku, prowadzący i uwagi, których formularz nie używa.
+    """
     sessions = []
     for s in model.sessions:
         start, end = s.start.astimezone(WARSAW), s.end.astimezone(WARSAW)
         item = {
+            "id": s.block_id,
             "date": start.date().isoformat(),
             "start": start.strftime("%H:%M"),
             "end": end.strftime("%H:%M"),
@@ -487,7 +492,10 @@ def options_json(model: Model, rooms: dict) -> dict:
             "activity": ACTIVITY.get(s.activity, s.activity),
             "room": room_text(s, rooms)[0],
             "group": s.group_text,
+            "teacher": s.teacher,
         }
+        if s.notices:
+            item["notices"] = s.notices
         if s.elective is None:
             item["gl"] = sorted(s.gl)
         else:

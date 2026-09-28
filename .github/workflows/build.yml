@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_notification:
+        description: Wyślij testowy e-mail z powiadomieniem
+        type: boolean
+        default: false
 
 permissions:
   contents: write      # keepalive i archiwum linków z poprzedniego semestru
@@ -26,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       deploy: ${{ steps.compare.outputs.deploy }}
+      messages: ${{ steps.changes.outputs.messages }}
+      notify_error: ${{ steps.changes.outputs.error }}
     steps:
       - uses: actions/checkout@v7
 
@@ -61,6 +68,40 @@ jobs:
             echo "Publikuję ($old → $new)."
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Powiadomienia e-mail o zmianach tuż przed zajęciami (notify.py).
+      # Poprzednią wersję planu trzymamy w cache Actions, a nie bierzemy ze
+      # strony: CDN Pages przez 10 minut po publikacji oddaje starą wersję
+      # (parametr w adresie nie pomaga) i ta sama zmiana przyszłaby dwa razy.
+      - name: Przywróć poprzednią wersję planu
+        if: steps.compare.outputs.deploy == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: .notify-state
+          key: notify-state-${{ github.run_id }}
+          restore-keys: notify-state-
+
+      # Błąd porównania nie blokuje publikacji kalendarzy — zgłasza go job notify.
+      - name: Sprawdź zmiany w obserwowanych planach
+        id: changes
+        if: steps.compare.outputs.deploy == 'true'
+        env:
+          NOTIFY_WATCH: ${{ secrets.NOTIFY_WATCH }}
+        run: |
+          if python notify.py diff --new public/options.json \
+               --old .notify-state/options.json --old-url "${SITE_URL}options.json" \
+               ${{ inputs.test_notification && '--test' || '' }}; then
+            mkdir -p .notify-state && cp public/options.json .notify-state/
+          else
+            echo "error=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zapamiętaj wersję planu
+        if: steps.compare.outputs.deploy == 'true' && steps.changes.outputs.error != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .notify-state
+          key: notify-state-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Przy zmianie semestru generate.py zapisuje skróty starych linków do
       # legacy/, żeby dalej zwracały kalendarz z notką „wybierz ponownie”.
@@ -106,3 +147,27 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  # Osobny job, żeby wysyłka nie blokowała publikacji. Jeśli się nie uda, run
+  # jest czerwony (GitHub przyśle maila) i można go ponowić przyciskiem
+  # „Re-run failed jobs” — z tymi samymi wiadomościami.
+  notify:
+    needs: build
+    if: needs.build.outputs.messages != '' || needs.build.outputs.notify_error == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Wyślij powiadomienia
+        env:
+          MESSAGES: ${{ needs.build.outputs.messages }}
+          DIFF_ERROR: ${{ needs.build.outputs.notify_error }}
+          NOTIFY_WATCH: ${{ secrets.NOTIFY_WATCH }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          python3 notify.py send
+          if [ "$DIFF_ERROR" = true ]; then
+            echo "::error::Porównanie wersji planu się nie udało — szczegóły w logu joba build."
+            exit 1
+          fi
