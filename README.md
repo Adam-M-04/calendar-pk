@@ -141,8 +141,9 @@ Temat: Plan PK: zmiany na sob. 03.10, niedz. 04.10
 - Wysyłka to osobny job `notify`, więc jej awaria nie wstrzymuje publikacji
   kalendarzy. Run jest wtedy czerwony, a „Re-run failed jobs” wysyła te same
   wiadomości jeszcze raz.
-- Plan sprawdzany jest co godzinę, więc mail przychodzi do godziny po zmianie
-  w planerze. Okno 4 dni to `NOTIFY_DAYS` w `notify.py`.
+- Plan sprawdzany jest co godzinę (przy włączonym
+  [zewnętrznym harmonogramie](#harmonogram)), więc mail przychodzi do godziny
+  po zmianie w planerze. Okno 4 dni to `NOTIFY_DAYS` w `notify.py`.
 - W logach publicznego repo linki występują tylko jako numery („link nr 1”).
 
 Podgląd bez wysyłania:
@@ -177,8 +178,48 @@ kalendarze.
    ręcznie.
 4. Opcjonalnie powiadomienia e-mail — sekrety z sekcji
    [Powiadomienia](#powiadomienia-o-zmianach-tuż-przed-zajęciami).
+5. Zewnętrzny harmonogram — sekcja niżej.
 
-Dalej leci samo: cron co godzinę pobiera plan, a publikuje tylko wtedy, gdy
-zmieniły się dane 4 roku albo kod (porównuje `fingerprint` z opublikowanego
-`meta.json`). Raz na 45 dni bez commitów workflow wypycha pusty commit, bo
-GitHub wyłącza harmonogram po 60 dniach bezczynności repozytorium.
+Dalej leci samo: workflow co godzinę pobiera plan, a publikuje tylko wtedy,
+gdy zmieniły się dane 4 roku albo kod (porównuje `fingerprint`
+z opublikowanego `meta.json`). Raz na 45 dni bez commitów wypycha pusty
+commit, bo GitHub wyłącza harmonogram po 60 dniach bezczynności repozytorium.
+
+### Harmonogram
+
+Cron GitHuba działa „w miarę możliwości” i przy obciążeniu gubi terminy. Po
+starcie repo z 28 godzinnych terminów odpaliły się 4, każdy z opóźnieniem
+14–44 min. Dlatego workflow co godzinę uruchamia z zewnątrz
+[cron-job.org](https://cron-job.org) przez API GitHuba. Własny cron (co 15 min)
+zostaje jako zapas.
+
+1. **Token:** GitHub → Settings → Developer settings → Personal access tokens →
+   **Fine-grained tokens** → Generate new token.
+   - Repository access: *Only select repositories* → `calendar-pk`
+   - Permissions → Repository permissions → **Actions: Read and write**
+     (nic więcej)
+   - Ważność: najdłuższa dostępna. Wpisz sobie datę wygaśnięcia do kalendarza.
+2. **cron-job.org** → Create cronjob:
+   - URL: `https://api.github.com/repos/Adam-M-04/calendar-pk/actions/workflows/build.yml/dispatches`
+   - Harmonogram: co godzinę, np. w 5. minucie
+   - Advanced → Request method: **POST**
+   - Headers:
+
+     | Nagłówek | Wartość |
+     |---|---|
+     | `Authorization` | `Bearer <token z punktu 1>` |
+     | `Accept` | `application/vnd.github+json` |
+     | `X-GitHub-Api-Version` | `2022-11-28` |
+     | `Content-Type` | `application/json` |
+
+   - Request body: `{"ref":"main","inputs":{"only_if_changed":"true"}}`
+   - Notifications: włącz maila przy nieudanym wywołaniu (np. gdy token
+     wygaśnie).
+3. **Test run** w cron-job.org powinien dostać odpowiedź `204`, a w Actions
+   pojawi się run `workflow_dispatch`, który przy niezmienionym planie kończy
+   się komunikatem „Plan bez zmian — pomijam publikację”.
+
+`only_if_changed` sprawia, że wywołanie z zewnątrz działa jak cron: publikuje
+tylko przy zmianie. Ręczny „Run workflow” bez tej opcji publikuje zawsze.
+Token może tylko uruchamiać workflow w tym jednym repo. Nie da się nim zmienić
+kodu ani odczytać sekretów.

@@ -2,15 +2,20 @@ name: Zbuduj i opublikuj kalendarze
 
 on:
   schedule:
-    # Co godzinę. GitHub potrafi opóźnić harmonogram o kilkanaście minut —
-    # dla planu zajęć to bez znaczenia.
-    - cron: "23 * * * *"
+    # Harmonogram GitHuba działa „w miarę możliwości”: przy obciążeniu gubi
+    # terminy. Na starcie repo odpaliło się 4 z 28 godzinnych, stąd gęściej.
+    # Główny wyzwalacz jest zewnętrzny (only_if_changed niżej, patrz README).
+    - cron: "8,23,38,53 * * * *"
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
       test_notification:
         description: Wyślij testowy e-mail z powiadomieniem
+        type: boolean
+        default: false
+      only_if_changed:
+        description: Publikuj tylko przy zmianie planu (tak wywołuje zewnętrzny harmonogram)
         type: boolean
         default: false
 
@@ -61,7 +66,8 @@ jobs:
           new=$(python -c "import json; print(json.load(open('public/meta.json'))['fingerprint'])")
           old=$(curl -fsSL "${SITE_URL}meta.json" 2>/dev/null \
             | python -c "import json,sys; print(json.load(sys.stdin)['fingerprint'])" 2>/dev/null || echo brak)
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$new" = "$old" ]; then
+          if { [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.only_if_changed }}" = "true" ]; } \
+             && [ "$new" = "$old" ]; then
             echo "Plan bez zmian — pomijam publikację."
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           else
@@ -124,7 +130,7 @@ jobs:
       # nie działo. Plan potrafi stać bez zmian dłużej (wakacje), więc raz na
       # 45 dni wypychamy pusty commit, żeby licznik się zresetował.
       - name: Keepalive harmonogramu
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || inputs.only_if_changed
         run: |
           ostatni=$(git log -1 --format=%ct)
           teraz=$(date +%s)
